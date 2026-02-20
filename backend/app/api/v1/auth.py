@@ -32,7 +32,7 @@ from app.services.auth_service import AuthService
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-def get_auth_service(
+async def get_auth_service(
     session: Annotated[AsyncSession, Depends(get_db_session)]
 ) -> AuthService:
     """

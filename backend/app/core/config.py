@@ -6,8 +6,16 @@ This is the single source of truth for application configuration.
 Never hardcode values — everything comes from .env via this module.
 """
 
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import List
+
+# Get the backend directory (where this module lives)
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = BACKEND_DIR / "data"
+
+# Ensure data directory exists
+DATA_DIR.mkdir(exist_ok=True)
 
 
 class Settings(BaseSettings):
@@ -24,8 +32,8 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     
-    # Database
-    database_url: str = "sqlite+aiosqlite:///./data/auth.db"
+    # Database - use absolute path
+    database_url: str = f"sqlite+aiosqlite:///{DATA_DIR / 'auth.db'}"
     
     # CORS
     cors_origins: List[str] = ["http://localhost:5173"]
