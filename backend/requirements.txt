@@ -1,10 +1,23 @@
+# Auth Module Backend - Python Dependencies
+# ==========================================
+# Install with: pip install -r requirements.txt
+
+# Web Framework
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
+
+# Database (SQLite async for now, PostgreSQL-ready)
 sqlalchemy[asyncio]>=2.0.0
 aiosqlite>=0.20.0
+
+# Validation & Settings
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
+
+# Authentication
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 python-multipart>=0.0.9
+
+# Email validation
 email-validator>=2.0.0

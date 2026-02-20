@@ -1,14 +1,31 @@
-# server.py
-# Role: Entry point for the backend server. Starts uvicorn pointing at app.main:app.
-# Run with: python server.py  (or via run.py at the project root)
+"""
+Server Entry Point
+==================
+Role: Production entry point for running the FastAPI application.
+Uses Uvicorn ASGI server. Run with: python server.py
+"""
 
 import uvicorn
 
-if __name__ == "__main__":
+from app.core.config import settings
+
+
+def main():
+    """
+    Start the Uvicorn server.
+    Configuration varies based on APP_ENV setting.
+    """
+    # Development vs Production settings
+    is_dev = settings.app_env == "development"
+    
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
-        log_level="info",
+        reload=is_dev,  # Hot reload in development
+        log_level="debug" if is_dev else "info",
     )
+
+
+if __name__ == "__main__":
+    main()

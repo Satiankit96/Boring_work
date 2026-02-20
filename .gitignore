@@ -1,38 +1,44 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-dist/
-build/
-*.egg
+*$py.class
 
 # Virtual environments
-.venv/
 venv/
 env/
-
-# Environment variables — NEVER commit .env
-backend/.env
-.env
-
-# SQLite database
-backend/data/*.db
-backend/data/*.db-shm
-backend/data/*.db-wal
-
-# Node / frontend (future)
-node_modules/
-.next/
-dist/
-*.local
+.venv/
 
 # IDE
-.vscode/settings.json
+.vscode/
 .idea/
-*.iml
+*.swp
+*.swo
 
-# OS
+# Environment files (keep .env.example)
+.env
+!.env.example
+
+# Database
+*.db
+data/*.db
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+.coverage
+htmlcov/
+coverage/

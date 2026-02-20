@@ -1,50 +1,89 @@
-# models/schemas.py
-# Role: Pydantic v2 schemas for all API request bodies and response shapes.
-# These are the ONLY types that cross the HTTP boundary — never expose ORM models directly.
+"""
+Pydantic Schemas Module
+=======================
+Role: Define all request and response schemas for the API.
+These are used by FastAPI for automatic validation and documentation.
+Separate from ORM models — these are for API contracts only.
+"""
 
-from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, EmailStr, Field
 
 
-# ── Request Schemas ─────────────────────────────────────────────────────────────
+# =============================================================================
+# Request Schemas
+# =============================================================================
 
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, description="Minimum 8 characters")
+class UserRegisterRequest(BaseModel):
+    """Request body for user registration."""
+    
+    email: EmailStr = Field(..., description="User's email address")
+    password: str = Field(
+        ..., 
+        min_length=8,
+        max_length=128,
+        description="Password (min 8 characters)"
+    )
 
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+class UserLoginRequest(BaseModel):
+    """Request body for user login."""
+    
+    email: EmailStr = Field(..., description="User's email address")
+    password: str = Field(..., description="User's password")
 
 
-# ── Response Schemas ─────────────────────────────────────────────────────────────
+# =============================================================================
+# Response Schemas
+# =============================================================================
 
 class UserOut(BaseModel):
+    """User data returned in API responses (never includes password)."""
+    
     id: str
     email: str
-    created_at: str
+    created_at: datetime
 
-    model_config = {"from_attributes": True}
+    class Config:
+        from_attributes = True  # Allows creation from ORM model
 
 
 class RegisterResponse(BaseModel):
-    message: str
+    """Response body for successful registration."""
+    
+    message: str = "Account created"
     user_id: str
 
 
 class LoginResponse(BaseModel):
+    """Response body for successful login."""
+    
     access_token: str
     token_type: str = "bearer"
     user: UserOut
 
 
-# ── Error Schema ─────────────────────────────────────────────────────────────────
+class MeResponse(BaseModel):
+    """Response body for GET /me endpoint."""
+    
+    id: str
+    email: str
+    created_at: datetime
+
+
+# =============================================================================
+# Error Schemas
+# =============================================================================
 
 class ErrorDetail(BaseModel):
+    """Standard error detail structure."""
+    
     code: str
     message: str
 
 
 class ErrorResponse(BaseModel):
+    """Standard error response wrapper."""
+    
     detail: ErrorDetail

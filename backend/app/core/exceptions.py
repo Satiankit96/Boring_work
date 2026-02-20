@@ -1,37 +1,59 @@
-# core/exceptions.py
-# Role: Domain-level exceptions. These are NOT HTTP exceptions.
-# Route handlers catch these and convert them to HTTP responses with structured error codes.
-
-class AuthModuleError(Exception):
-    """Base exception for all auth module domain errors."""
-    pass
-
-
-class InvalidCredentialsError(AuthModuleError):
-    """Raised when email/password combination is invalid. Generic on purpose — prevents email enumeration."""
-    code = "INVALID_CREDENTIALS"
-    message = "Email or password is incorrect"
+"""
+Domain Exceptions Module
+========================
+Role: Define domain-specific exceptions used by the service layer.
+These are NOT HTTP exceptions — they are caught and mapped to HTTP responses in the API layer.
+This separation allows the same business logic to be used with different interfaces (CLI, gRPC, etc.)
+"""
 
 
-class EmailAlreadyExistsError(AuthModuleError):
-    """Raised when attempting to register with an already-registered email."""
-    code = "EMAIL_ALREADY_EXISTS"
-    message = "An account with this email already exists"
+class AuthException(Exception):
+    """Base exception for all authentication-related errors."""
+    
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(message)
 
 
-class UserNotFoundError(AuthModuleError):
-    """Raised when a user lookup by ID returns nothing."""
-    code = "USER_NOT_FOUND"
-    message = "User not found"
+class InvalidCredentialsError(AuthException):
+    """
+    Raised when login credentials are invalid.
+    Uses generic message to prevent email enumeration attacks.
+    """
+    
+    def __init__(self):
+        super().__init__(
+            code="INVALID_CREDENTIALS",
+            message="Email or password is incorrect"
+        )
 
 
-class TokenExpiredError(AuthModuleError):
-    """Raised when a JWT has expired."""
-    code = "TOKEN_EXPIRED"
-    message = "Access token has expired"
+class EmailAlreadyExistsError(AuthException):
+    """Raised when attempting to register with an email that's already in use."""
+    
+    def __init__(self):
+        super().__init__(
+            code="EMAIL_ALREADY_EXISTS",
+            message="An account with this email already exists"
+        )
 
 
-class InvalidTokenError(AuthModuleError):
-    """Raised when a JWT is malformed or invalid."""
-    code = "INVALID_TOKEN"
-    message = "Invalid access token"
+class InvalidTokenError(AuthException):
+    """Raised when a JWT token is invalid or expired."""
+    
+    def __init__(self):
+        super().__init__(
+            code="INVALID_TOKEN",
+            message="Token is invalid or expired"
+        )
+
+
+class UserNotFoundError(AuthException):
+    """Raised when a user cannot be found by ID."""
+    
+    def __init__(self):
+        super().__init__(
+            code="USER_NOT_FOUND",
+            message="User not found"
+        )

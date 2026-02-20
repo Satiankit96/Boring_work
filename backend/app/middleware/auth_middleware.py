@@ -1,36 +1,85 @@
-# middleware/auth_middleware.py
-# Role: FastAPI dependency for protected routes. Extracts and validates the Bearer token.
-# Returns the user_id (str) on success. Raises HTTP 401 on any failure.
-# Import and use as: user_id: str = Depends(get_current_user_id)
+"""
+Auth Middleware (JWT Dependency)
+================================
+Role: FastAPI dependency for protecting routes that require authentication.
+Validates JWT token from Authorization header and returns current user.
+Reused by ALL future modules that need authentication.
+"""
+
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import decode_token
+from app.core.exceptions import InvalidTokenError, UserNotFoundError
+from app.db.base import get_db_session
+from app.models.user import User
+from app.repositories.sqlite_user_repository import SqliteUserRepository
+from app.services.auth_service import AuthService
 
-bearer_scheme = HTTPBearer()
+
+# Bearer token security scheme for Swagger UI
+security = HTTPBearer()
 
 
-async def get_current_user_id(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-) -> str:
+async def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
     """
-    Validates the Bearer JWT from the Authorization header.
-    Returns the user_id (sub claim) if valid. Raises 401 otherwise.
+    FastAPI dependency that extracts and validates JWT from Authorization header.
+    
+    Usage:
+        @router.get("/protected")
+        async def protected_route(user: User = Depends(get_current_user)):
+            return {"user_id": user.id}
+    
+    Args:
+        credentials: Bearer token from Authorization header
+        session: Database session (injected)
+        
+    Returns:
+        Authenticated User object
+        
+    Raises:
+        HTTPException 401: If token is invalid or user not found
     """
     token = credentials.credentials
-    try:
-        payload = decode_token(token)
-        user_id: str = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "INVALID_TOKEN", "message": "Invalid access token"},
-            )
-        return user_id
-    except JWTError:
+    
+    # Decode and validate JWT
+    payload = decode_token(token)
+    if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_TOKEN", "message": "Invalid or expired access token"},
+            detail={"code": "INVALID_TOKEN", "message": "Token is invalid or expired"},
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    # Extract user ID from token
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_TOKEN", "message": "Token payload invalid"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Get user from database
+    repository = SqliteUserRepository(session)
+    auth_service = AuthService(repository)
+    
+    try:
+        user = await auth_service.get_current_user(user_id)
+        return user
+    except UserNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "USER_NOT_FOUND", "message": "User no longer exists"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+# Type alias for cleaner route signatures
+CurrentUser = Annotated[User, Depends(get_current_user)]

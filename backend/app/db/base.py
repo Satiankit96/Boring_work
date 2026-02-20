@@ -1,36 +1,66 @@
-# db/base.py
-# Role: SQLAlchemy async engine + session factory. Everything DB-connection-related lives here.
-# Imported by repositories only — never by services or routes.
+"""
+Database Base Module
+====================
+Role: Set up SQLAlchemy async engine and session factory.
+This is the only place database connection details are configured.
+All repositories use the async session factory from here.
+"""
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+
 from app.core.config import settings
 
+
+# Create async engine with SQLite (swap URL for Postgres later)
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.app_env == "development",
-    connect_args={"check_same_thread": False},
+    echo=settings.app_env == "development",  # Log SQL in dev mode
+    future=True,
 )
 
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
+# Async session factory
+async_session_factory = async_sessionmaker(
+    engine,
     class_=AsyncSession,
     expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
 )
 
 
 class Base(DeclarativeBase):
-    """Declarative base that all ORM models inherit from."""
+    """
+    SQLAlchemy declarative base class.
+    All ORM models inherit from this.
+    """
     pass
 
 
-async def get_db() -> AsyncSession:
-    """FastAPI dependency: yields a DB session, closes it after the request."""
-    async with AsyncSessionLocal() as session:
-        yield session
+async def get_db_session() -> AsyncSession:
+    """
+    FastAPI dependency that yields an async database session.
+    Automatically closes session after request completes.
+    """
+    async with async_session_factory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
 
 async def init_db():
-    """Create all tables defined in ORM models. Called on startup."""
+    """
+    Initialize the database by creating all tables.
+    Called on application startup.
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def close_db():
+    """
+    Close database connections.
+    Called on application shutdown.
+    """
+    await engine.dispose()

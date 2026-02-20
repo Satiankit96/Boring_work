@@ -1,183 +1,283 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
-run.py — Project bootstrap and health-check entry point.
-=========================================================
-This script:
-  1. Checks that all required Python packages are installed.
-  2. Creates the backend/.env file from .env.example if it doesn't exist.
-  3. Creates the data/ directory for the SQLite database if it doesn't exist.
-  4. Runs the import chain to verify no import errors exist in the codebase.
-  5. Initialises the SQLite database (creates tables).
-  6. Starts the uvicorn server.
+Auth Module - Setup and Run Script
+===================================
+This script sets up and runs the entire Auth Module application.
+It handles:
+1. Backend Python environment setup and dependency installation
+2. Database initialization
+3. Frontend dependency installation
+4. Starting both backend and frontend servers
 
 Usage:
-    cd backend
-    python ../run.py          # from the repo root
-    -- OR --
-    cd Boring_work
-    python run.py             # from the project root (this file)
+    python run.py setup     # First-time setup (install dependencies)
+    python run.py backend   # Run backend only
+    python run.py frontend  # Run frontend only
+    python run.py all       # Run both (default)
+    python run.py check     # Check if everything is ready
 """
 
-import sys
 import os
+import sys
 import subprocess
 import shutil
 from pathlib import Path
 
-# ── Paths ────────────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).parent
-BACKEND = ROOT / "backend"
-ENV_FILE = BACKEND / ".env"
-ENV_EXAMPLE = BACKEND / ".env.example"
-DATA_DIR = BACKEND / "data"
-REQUIREMENTS = BACKEND / "requirements.txt"
-
-REQUIRED_PACKAGES = [
-    "fastapi",
-    "uvicorn",
-    "sqlalchemy",
-    "aiosqlite",
-    "pydantic",
-    "pydantic_settings",
-    "jose",
-    "passlib",
-    "multipart",
-    "email_validator",
-]
-
-# ── Helpers ───────────────────────────────────────────────────────────────────────
-
-def step(msg: str):
-    print(f"\n✅  {msg}")
-
-def warn(msg: str):
-    print(f"\n⚠️   {msg}")
-
-def fail(msg: str):
-    print(f"\n❌  {msg}")
-    sys.exit(1)
+# Paths
+ROOT_DIR = Path(__file__).parent.absolute()
+BACKEND_DIR = ROOT_DIR / "backend"
+FRONTEND_DIR = ROOT_DIR / "frontend"
+DATA_DIR = BACKEND_DIR / "data"
 
 
-# ── Step 1: Check Python version ─────────────────────────────────────────────────
-
-if sys.version_info < (3, 10):
-    fail(f"Python 3.10+ required. You have {sys.version}. Please upgrade.")
-step(f"Python version OK: {sys.version.split()[0]}")
-
-
-# ── Step 2: Install / check dependencies ─────────────────────────────────────────
-
-print("\n📦  Checking / installing dependencies from requirements.txt …")
-result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS), "--quiet"],
-    capture_output=True,
-    text=True,
-)
-if result.returncode != 0:
-    fail(f"pip install failed:\n{result.stderr}")
-step("All dependencies installed.")
+def print_header(text: str):
+    """Print a formatted header."""
+    print("\n" + "=" * 60)
+    print(f"  {text}")
+    print("=" * 60 + "\n")
 
 
-# ── Step 3: Check each package imports ───────────────────────────────────────────
+def print_step(text: str):
+    """Print a step indicator."""
+    print(f"➜ {text}")
 
-print("\n🔍  Verifying package imports …")
-missing = []
-for pkg in REQUIRED_PACKAGES:
+
+def print_success(text: str):
+    """Print a success message."""
+    print(f"✓ {text}")
+
+
+def print_error(text: str):
+    """Print an error message."""
+    print(f"✗ {text}")
+
+
+def run_command(cmd: list, cwd: Path = None, check: bool = True) -> bool:
+    """Run a command and return success status."""
     try:
-        __import__(pkg)
-    except ImportError:
-        missing.append(pkg)
+        subprocess.run(cmd, cwd=cwd, check=check, shell=True if os.name == 'nt' else False)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+    except FileNotFoundError:
+        print_error(f"Command not found: {cmd[0]}")
+        return False
 
-if missing:
-    fail(f"The following packages failed to import: {missing}\nRun: pip install -r backend/requirements.txt")
-step("All packages import successfully.")
 
-
-# ── Step 4: Ensure .env exists ───────────────────────────────────────────────────
-
-if not ENV_FILE.exists():
-    if ENV_EXAMPLE.exists():
-        shutil.copy(ENV_EXAMPLE, ENV_FILE)
-        warn(f".env not found — copied from .env.example to {ENV_FILE}\n"
-             f"    ⚡ Please update SECRET_KEY before deploying to production!")
+def check_python():
+    """Check if Python 3.10+ is available."""
+    print_step("Checking Python version...")
+    version = sys.version_info
+    if version.major >= 3 and version.minor >= 10:
+        print_success(f"Python {version.major}.{version.minor}.{version.micro} detected")
+        return True
     else:
-        fail(f"Neither .env nor .env.example found in {BACKEND}. Cannot start.")
-else:
-    step(f".env file found at {ENV_FILE}")
+        print_error(f"Python 3.10+ required, found {version.major}.{version.minor}")
+        return False
 
 
-# ── Step 5: Ensure data directory exists ─────────────────────────────────────────
-
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-step(f"Data directory ready: {DATA_DIR}")
-
-
-# ── Step 6: Verify module import chain ───────────────────────────────────────────
-
-print("\n🔗  Verifying backend module imports …")
-os.chdir(BACKEND)                          # must cd into backend so 'app' package resolves
-sys.path.insert(0, str(BACKEND))
-
-try:
-    from app.core.config import settings
-    from app.core.security import hash_password, verify_password, create_access_token, decode_token
-    from app.core.exceptions import InvalidCredentialsError, EmailAlreadyExistsError
-    from app.db.base import init_db, Base
-    from app.models.user import User
-    from app.models.schemas import RegisterRequest, LoginRequest, LoginResponse, UserOut
-    from app.repositories.base import IUserRepository
-    from app.repositories.sqlite_user_repository import SqliteUserRepository
-    from app.services.auth_service import AuthService
-    from app.middleware.auth_middleware import get_current_user_id
-    from app.api.v1.auth import router
-    from app.main import app
-except Exception as e:
-    fail(f"Import chain failed: {e}\nFix the error above before starting the server.")
-
-step("All backend modules import successfully.")
-print(f"   DB URL      : {settings.database_url}")
-print(f"   Environment : {settings.app_env}")
-print(f"   CORS origins: {settings.cors_origins}")
+def check_node():
+    """Check if Node.js is available."""
+    print_step("Checking Node.js...")
+    try:
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True)
+        version = result.stdout.strip()
+        print_success(f"Node.js {version} detected")
+        return True
+    except FileNotFoundError:
+        print_error("Node.js not found. Please install Node.js 18+")
+        return False
 
 
-# ── Step 7: Init database (create tables) ────────────────────────────────────────
-
-print("\n🗄️   Initialising database …")
-import asyncio
-
-async def _init():
-    await init_db()
-
-asyncio.run(_init())
-step("Database tables created / verified.")
-
-
-# ── Step 8: Quick sanity-check — hash + verify roundtrip ─────────────────────────
-
-test_hash = hash_password("TestPassword123!")
-assert verify_password("TestPassword123!", test_hash), "bcrypt roundtrip failed!"
-step("bcrypt hash/verify roundtrip: PASSED")
-
-token = create_access_token({"sub": "test-user-id"})
-payload = decode_token(token)
-assert payload.get("sub") == "test-user-id", "JWT roundtrip failed!"
-step("JWT sign/verify roundtrip: PASSED")
+def check_npm():
+    """Check if npm is available."""
+    print_step("Checking npm...")
+    try:
+        result = subprocess.run(["npm", "--version"], capture_output=True, text=True, shell=True if os.name == 'nt' else False)
+        version = result.stdout.strip()
+        print_success(f"npm {version} detected")
+        return True
+    except FileNotFoundError:
+        print_error("npm not found. Please install Node.js/npm")
+        return False
 
 
-# ── Step 9: Start server ──────────────────────────────────────────────────────────
+def setup_backend():
+    """Set up the backend Python environment."""
+    print_header("Setting up Backend")
+    
+    # Create data directory for SQLite
+    print_step("Creating data directory...")
+    DATA_DIR.mkdir(exist_ok=True)
+    print_success("Data directory ready")
+    
+    # Install Python dependencies
+    print_step("Installing Python dependencies...")
+    if run_command([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=BACKEND_DIR):
+        print_success("Python dependencies installed")
+        return True
+    else:
+        print_error("Failed to install Python dependencies")
+        return False
 
-print("\n" + "=" * 60)
-print("🚀  All checks passed! Starting the server …")
-print("=" * 60)
-print(f"\n   API docs  →  http://localhost:8000/docs")
-print(f"   ReDoc     →  http://localhost:8000/redoc")
-print(f"   Health    →  http://localhost:8000/health\n")
 
-import uvicorn
-uvicorn.run(
-    "app.main:app",
-    host="0.0.0.0",
-    port=8000,
-    reload=True,
-    log_level="info",
-)
+def setup_frontend():
+    """Set up the frontend Node.js environment."""
+    print_header("Setting up Frontend")
+    
+    print_step("Installing Node.js dependencies...")
+    npm_cmd = "npm.cmd" if os.name == 'nt' else "npm"
+    if run_command([npm_cmd, "install"], cwd=FRONTEND_DIR):
+        print_success("Node.js dependencies installed")
+        return True
+    else:
+        print_error("Failed to install Node.js dependencies")
+        return False
+
+
+def run_backend():
+    """Run the backend server."""
+    print_header("Starting Backend Server")
+    print_step("Starting FastAPI server on http://localhost:8000")
+    print("Press Ctrl+C to stop\n")
+    
+    os.chdir(BACKEND_DIR)
+    subprocess.run([sys.executable, "server.py"])
+
+
+def run_frontend():
+    """Run the frontend development server."""
+    print_header("Starting Frontend Server")
+    print_step("Starting Vite dev server on http://localhost:5173")
+    print("Press Ctrl+C to stop\n")
+    
+    npm_cmd = "npm.cmd" if os.name == 'nt' else "npm"
+    subprocess.run([npm_cmd, "run", "dev"], cwd=FRONTEND_DIR, shell=True if os.name == 'nt' else False)
+
+
+def run_all():
+    """Run both backend and frontend in separate processes."""
+    import threading
+    
+    print_header("Starting Full Application")
+    print("Backend: http://localhost:8000")
+    print("Frontend: http://localhost:5173")
+    print("API Docs: http://localhost:8000/docs")
+    print("\nPress Ctrl+C to stop both servers\n")
+    
+    # Start backend in a thread
+    backend_thread = threading.Thread(target=run_backend, daemon=True)
+    backend_thread.start()
+    
+    # Give backend time to start
+    import time
+    time.sleep(2)
+    
+    # Run frontend in main thread (so Ctrl+C works)
+    try:
+        run_frontend()
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+
+
+def check_status():
+    """Check if all dependencies are ready."""
+    print_header("System Check")
+    
+    all_good = True
+    
+    # Check Python
+    if not check_python():
+        all_good = False
+    
+    # Check Node.js
+    if not check_node():
+        all_good = False
+    
+    # Check npm
+    if not check_npm():
+        all_good = False
+    
+    # Check backend dependencies
+    print_step("Checking backend dependencies...")
+    try:
+        import fastapi
+        import uvicorn
+        import sqlalchemy
+        print_success("Backend dependencies installed")
+    except ImportError as e:
+        print_error(f"Missing backend dependency: {e.name}")
+        all_good = False
+    
+    # Check frontend node_modules
+    print_step("Checking frontend dependencies...")
+    if (FRONTEND_DIR / "node_modules").exists():
+        print_success("Frontend dependencies installed")
+    else:
+        print_error("Frontend dependencies not installed (run: python run.py setup)")
+        all_good = False
+    
+    # Summary
+    print()
+    if all_good:
+        print_success("All checks passed! Run 'python run.py all' to start.")
+    else:
+        print_error("Some checks failed. Run 'python run.py setup' first.")
+    
+    return all_good
+
+
+def print_usage():
+    """Print usage information."""
+    print(__doc__)
+
+
+def main():
+    """Main entry point."""
+    if len(sys.argv) < 2:
+        command = "all"
+    else:
+        command = sys.argv[1].lower()
+    
+    if command == "setup":
+        if not check_python():
+            sys.exit(1)
+        if not check_node():
+            sys.exit(1)
+        if not check_npm():
+            sys.exit(1)
+        
+        if setup_backend() and setup_frontend():
+            print_header("Setup Complete!")
+            print("Run 'python run.py all' to start the application.")
+            print("\nEndpoints:")
+            print("  • Frontend: http://localhost:5173")
+            print("  • Backend:  http://localhost:8000")
+            print("  • API Docs: http://localhost:8000/docs")
+        else:
+            sys.exit(1)
+    
+    elif command == "backend":
+        run_backend()
+    
+    elif command == "frontend":
+        run_frontend()
+    
+    elif command == "all":
+        run_all()
+    
+    elif command == "check":
+        if not check_status():
+            sys.exit(1)
+    
+    elif command in ["help", "-h", "--help"]:
+        print_usage()
+    
+    else:
+        print_error(f"Unknown command: {command}")
+        print_usage()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
