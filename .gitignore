@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables — NEVER commit .env
+backend/.env
+.env
+
+# SQLite database
+backend/data/*.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+
+# Node / frontend (future)
+node_modules/
+.next/
+dist/
+*.local
+
+# IDE
+.vscode/settings.json
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
