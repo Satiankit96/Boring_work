@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "auth-client"
+version = "0.1.0"
+description = "Standalone authentication client library for Keycloak/OIDC JWT verification"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Auth Module Team" }
+]
+keywords = ["authentication", "jwt", "keycloak", "oidc", "fastapi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "Topic :: Security",
+]
+
+dependencies = [
+    "httpx>=0.25.0",
+    "python-jose[cryptography]>=3.3.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+fastapi = [
+    "fastapi>=0.100.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Satiankit96/Boring_work"
+Repository = "https://github.com/Satiankit96/Boring_work"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/auth_client"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

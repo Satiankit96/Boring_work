@@ -1,0 +1,40 @@
+# Keycloak Local Development Setup
+# ==================================
+# Run: docker-compose up -d
+# Access: http://localhost:8080
+# Admin Console: http://localhost:8080/admin (admin/admin)
+
+version: '3.8'
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: auth-module-keycloak
+    command: start-dev --import-realm
+    environment:
+      # Admin credentials (local dev only - change in production!)
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # Database (uses embedded H2 for dev)
+      KC_DB: dev-file
+      # Hostname settings
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      # Import pre-configured realm on first startup
+      - ./realm-export.json:/opt/keycloak/data/import/realm.json:ro
+      # Persist data across restarts
+      - keycloak_data:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  keycloak_data:
+    name: auth-module-keycloak-data

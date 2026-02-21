@@ -55,8 +55,8 @@ export function useAuth() {
   /**
    * Logout current user.
    */
-  const logout = () => {
-    auth.logout();
+  const logout = async (): Promise<void> => {
+    await auth.logout();
   };
 
   /**
@@ -66,6 +66,13 @@ export function useAuth() {
     setError(null);
   };
 
+  /**
+   * Check if user has a specific role.
+   */
+  const hasRole = (role: string): boolean => {
+    return auth.hasRole(role);
+  };
+
   return {
     // State
     user: auth.user,
@@ -73,11 +80,13 @@ export function useAuth() {
     isLoading: auth.isLoading,
     isSubmitting,
     error,
+    isAdmin: auth.isAdmin,
 
     // Actions
     login,
     register,
     logout,
     clearError,
+    hasRole,
   };
 }

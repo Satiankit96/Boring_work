@@ -34,6 +34,18 @@ class UserLoginRequest(BaseModel):
     password: str = Field(..., description="User's password")
 
 
+class RefreshTokenRequest(BaseModel):
+    """Request body for token refresh."""
+    
+    refresh_token: str = Field(..., description="Refresh token from login")
+
+
+class LogoutRequest(BaseModel):
+    """Request body for logout."""
+    
+    refresh_token: str = Field(..., description="Refresh token to invalidate")
+
+
 # =============================================================================
 # Response Schemas
 # =============================================================================
@@ -61,15 +73,33 @@ class LoginResponse(BaseModel):
     
     access_token: str
     token_type: str = "bearer"
-    user: UserOut
+    expires_in: int = Field(default=300, description="Access token lifetime in seconds")
+    refresh_token: Optional[str] = Field(default=None, description="Refresh token (Keycloak mode only)")
+    user: Optional[UserOut] = Field(default=None, description="User info (local mode only)")
+
+
+class RefreshResponse(BaseModel):
+    """Response body for successful token refresh."""
+    
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int = Field(default=300, description="Access token lifetime in seconds")
+    refresh_token: Optional[str] = Field(default=None, description="New refresh token")
+
+
+class LogoutResponse(BaseModel):
+    """Response body for successful logout."""
+    
+    message: str = "Logged out successfully"
 
 
 class MeResponse(BaseModel):
     """Response body for GET /me endpoint."""
     
     id: str
-    email: str
-    created_at: datetime
+    email: Optional[str] = None
+    roles: list[str] = Field(default_factory=list, description="User roles (Keycloak mode)")
+    created_at: Optional[datetime] = Field(default=None, description="Account creation time (local mode)")
 
 
 # =============================================================================

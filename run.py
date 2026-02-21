@@ -147,12 +147,21 @@ def run_backend():
 
 def run_frontend():
     """Run the frontend development server."""
+    if not check_node():
+        print_error("Cannot start frontend without Node.js")
+        print("\n💡 Install Node.js from: https://nodejs.org/")
+        print("   Then restart your terminal and run: python run.py all")
+        print("\n📌 Backend is still available at: http://localhost:8000")
+        print("   API Docs: http://localhost:8000/docs")
+        return False
+    
     print_header("Starting Frontend Server")
     print_step("Starting Vite dev server on http://localhost:5173")
     print("Press Ctrl+C to stop\n")
     
     npm_cmd = "npm.cmd" if os.name == 'nt' else "npm"
     subprocess.run([npm_cmd, "run", "dev"], cwd=FRONTEND_DIR, shell=True if os.name == 'nt' else False)
+    return True
 
 
 def run_all():
@@ -172,6 +181,21 @@ def run_all():
     # Give backend time to start
     import time
     time.sleep(2)
+    
+    # Check if Node.js is available
+    if not check_node():
+        print_error("Node.js not found - Frontend will not start")
+        print("\n💡 Install Node.js from: https://nodejs.org/")
+        print("   Then restart your terminal and run: python run.py all")
+        print("\n📌 Backend is running at: http://localhost:8000")
+        print("   API Docs: http://localhost:8000/docs")
+        print("\nPress Ctrl+C to stop the backend...\n")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+        return
     
     # Run frontend in main thread (so Ctrl+C works)
     try:

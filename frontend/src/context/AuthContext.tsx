@@ -3,16 +3,30 @@
  * =====================
  * Role: Global authentication state management.
  * Provides user state, login/logout functions to entire app.
+ * Supports both local and Keycloak authentication modes.
  * Uses Context API + useReducer — no external state libraries needed.
  */
 
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { User, login as apiLogin, getMe } from '../services/auth.api';
+import { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import {
+  login as apiLogin,
+  logout as apiLogout,
+  getMe,
+  clearTokens,
+  hasStoredTokens,
+} from '../services/auth.api';
+
+// User type from /me endpoint
+interface User {
+  id: string;
+  email: string | null;
+  roles: string[];
+  created_at: string | null;
+}
 
 // State types
 interface AuthState {
   user: User | null;
-  token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
 }
@@ -20,15 +34,15 @@ interface AuthState {
 // Action types
 type AuthAction =
   | { type: 'LOGIN_START' }
-  | { type: 'LOGIN_SUCCESS'; payload: { user: User; token: string } }
+  | { type: 'LOGIN_SUCCESS'; payload: { user: User } }
   | { type: 'LOGIN_FAILURE' }
   | { type: 'LOGOUT' }
-  | { type: 'RESTORE_SESSION'; payload: { user: User; token: string } };
+  | { type: 'RESTORE_SESSION'; payload: { user: User } }
+  | { type: 'SET_LOADING'; payload: boolean };
 
 // Initial state
 const initialState: AuthState = {
   user: null,
-  token: null,
   isLoading: true, // Start loading to check for existing session
   isAuthenticated: false,
 };
@@ -43,7 +57,6 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
       return {
         ...state,
         user: action.payload.user,
-        token: action.payload.token,
         isLoading: false,
         isAuthenticated: true,
       };
@@ -51,6 +64,8 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
       return { ...state, isLoading: false };
     case 'LOGOUT':
       return { ...initialState, isLoading: false };
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
     default:
       return state;
   }
@@ -59,13 +74,12 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 // Context
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  hasRole: (role: string) => boolean;
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Token storage key
-const TOKEN_KEY = 'auth_token';
 
 // Provider component
 interface AuthProviderProps {
@@ -78,18 +92,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Restore session on mount
   useEffect(() => {
     const restoreSession = async () => {
-      const storedToken = localStorage.getItem(TOKEN_KEY);
+      if (!hasStoredTokens()) {
+        dispatch({ type: 'LOGOUT' });
+        return;
+      }
       
-      if (storedToken) {
-        try {
-          const user = await getMe(storedToken);
-          dispatch({ type: 'RESTORE_SESSION', payload: { user, token: storedToken } });
-        } catch {
-          // Token invalid, clear it
-          localStorage.removeItem(TOKEN_KEY);
-          dispatch({ type: 'LOGOUT' });
-        }
-      } else {
+      try {
+        const meResponse = await getMe();
+        const user: User = {
+          id: meResponse.id,
+          email: meResponse.email,
+          roles: meResponse.roles || [],
+          created_at: meResponse.created_at,
+        };
+        dispatch({ type: 'RESTORE_SESSION', payload: { user } });
+      } catch {
+        // Token invalid, clear it
+        clearTokens();
         dispatch({ type: 'LOGOUT' });
       }
     };
@@ -102,11 +121,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
     dispatch({ type: 'LOGIN_START' });
     
     try {
-      const response = await apiLogin(email, password);
-      localStorage.setItem(TOKEN_KEY, response.access_token);
+      await apiLogin(email, password);
+      
+      // Get user info from /me endpoint (tokens are already stored by apiLogin)
+      const meResponse = await getMe();
+      const user: User = {
+        id: meResponse.id,
+        email: meResponse.email,
+        roles: meResponse.roles || [],
+        created_at: meResponse.created_at,
+      };
+      
       dispatch({
         type: 'LOGIN_SUCCESS',
-        payload: { user: response.user, token: response.access_token },
+        payload: { user },
       });
     } catch (error) {
       dispatch({ type: 'LOGIN_FAILURE' });
@@ -115,15 +143,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   // Logout function
-  const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
+  const logout = async (): Promise<void> => {
+    await apiLogout();
     dispatch({ type: 'LOGOUT' });
   };
+
+  // Check if user has a specific role
+  const hasRole = (role: string): boolean => {
+    return state.user?.roles?.includes(role) ?? false;
+  };
+
+  // Check if user is admin
+  const isAdmin = hasRole('admin');
 
   const value: AuthContextType = {
     ...state,
     login,
     logout,
+    hasRole,
+    isAdmin,
   };
 
   return (
