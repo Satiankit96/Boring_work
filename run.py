@@ -1,306 +1,222 @@
 #!/usr/bin/env python3
 """
-Auth Module - Setup and Run Script
-===================================
-This script sets up and runs the entire Auth Module application.
-It handles:
-1. Backend Python environment setup and dependency installation
-2. Database initialization
-3. Frontend dependency installation
-4. Starting both backend and frontend servers
+Auth Module v2 - Run Script
+============================
+Starts all services: Keycloak (Docker), Backend (FastAPI), Frontend (Vite)
 
 Usage:
-    python run.py setup     # First-time setup (install dependencies)
-    python run.py backend   # Run backend only
-    python run.py frontend  # Run frontend only
-    python run.py all       # Run both (default)
-    python run.py check     # Check if everything is ready
+    python run.py              # Start everything (Keycloak mode)
+    python run.py --local      # Start without Keycloak (local auth)
+    python run.py --stop       # Stop all services
 """
 
 import os
 import sys
 import subprocess
 import shutil
+import time
+import signal
 from pathlib import Path
 
-# Paths
 ROOT_DIR = Path(__file__).parent.absolute()
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
-DATA_DIR = BACKEND_DIR / "data"
+KEYCLOAK_DIR = ROOT_DIR / "keycloak"
+
+# Store background processes
+processes = []
 
 
-def print_header(text: str):
-    """Print a formatted header."""
-    print("\n" + "=" * 60)
+def print_box(text: str):
+    print("\n" + "=" * 50)
     print(f"  {text}")
-    print("=" * 60 + "\n")
+    print("=" * 50)
 
 
-def print_step(text: str):
-    """Print a step indicator."""
-    print(f"➜ {text}")
-
-
-def print_success(text: str):
-    """Print a success message."""
-    print(f"✓ {text}")
-
-
-def print_error(text: str):
-    """Print an error message."""
-    print(f"✗ {text}")
-
-
-def run_command(cmd: list, cwd: Path = None, check: bool = True) -> bool:
-    """Run a command and return success status."""
-    try:
-        subprocess.run(cmd, cwd=cwd, check=check, shell=True if os.name == 'nt' else False)
-        return True
-    except subprocess.CalledProcessError:
-        return False
-    except FileNotFoundError:
-        print_error(f"Command not found: {cmd[0]}")
-        return False
-
-
-def check_python():
-    """Check if Python 3.10+ is available."""
-    print_step("Checking Python version...")
-    version = sys.version_info
-    if version.major >= 3 and version.minor >= 10:
-        print_success(f"Python {version.major}.{version.minor}.{version.micro} detected")
-        return True
+def run_cmd(cmd: str, cwd: Path = None, background: bool = False, env: dict = None):
+    """Run a command."""
+    full_env = os.environ.copy()
+    if env:
+        full_env.update(env)
+    
+    if background:
+        if os.name == 'nt':
+            proc = subprocess.Popen(
+                cmd, cwd=cwd, shell=True, env=full_env,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            proc = subprocess.Popen(
+                cmd, cwd=cwd, shell=True, env=full_env,
+                preexec_fn=os.setpgrp
+            )
+        processes.append(proc)
+        return proc
     else:
-        print_error(f"Python 3.10+ required, found {version.major}.{version.minor}")
-        return False
+        return subprocess.run(cmd, cwd=cwd, shell=True, env=full_env)
 
 
-def check_node():
-    """Check if Node.js is available."""
-    print_step("Checking Node.js...")
+def check_docker():
+    """Check if Docker is running."""
     try:
-        result = subprocess.run(["node", "--version"], capture_output=True, text=True)
-        version = result.stdout.strip()
-        print_success(f"Node.js {version} detected")
-        return True
-    except FileNotFoundError:
-        print_error("Node.js not found. Please install Node.js 18+")
+        result = subprocess.run(
+            "docker info", shell=True, capture_output=True, timeout=10
+        )
+        return result.returncode == 0
+    except:
         return False
 
 
-def check_npm():
-    """Check if npm is available."""
-    print_step("Checking npm...")
-    try:
-        result = subprocess.run(["npm", "--version"], capture_output=True, text=True, shell=True if os.name == 'nt' else False)
-        version = result.stdout.strip()
-        print_success(f"npm {version} detected")
-        return True
-    except FileNotFoundError:
-        print_error("npm not found. Please install Node.js/npm")
-        return False
+def check_port(port: int) -> bool:
+    """Check if a port is in use."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', port)) == 0
 
 
-def setup_backend():
-    """Set up the backend Python environment."""
-    print_header("Setting up Backend")
-    
-    # Create data directory for SQLite
-    print_step("Creating data directory...")
-    DATA_DIR.mkdir(exist_ok=True)
-    print_success("Data directory ready")
-    
-    # Install Python dependencies
-    print_step("Installing Python dependencies...")
-    if run_command([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=BACKEND_DIR):
-        print_success("Python dependencies installed")
-        return True
-    else:
-        print_error("Failed to install Python dependencies")
-        return False
-
-
-def setup_frontend():
-    """Set up the frontend Node.js environment."""
-    print_header("Setting up Frontend")
-    
-    print_step("Installing Node.js dependencies...")
-    npm_cmd = "npm.cmd" if os.name == 'nt' else "npm"
-    if run_command([npm_cmd, "install"], cwd=FRONTEND_DIR):
-        print_success("Node.js dependencies installed")
-        return True
-    else:
-        print_error("Failed to install Node.js dependencies")
-        return False
-
-
-def run_backend():
-    """Run the backend server."""
-    print_header("Starting Backend Server")
-    print_step("Starting FastAPI server on http://localhost:8000")
-    print("Press Ctrl+C to stop\n")
-    
-    os.chdir(BACKEND_DIR)
-    subprocess.run([sys.executable, "server.py"])
-
-
-def run_frontend():
-    """Run the frontend development server."""
-    if not check_node():
-        print_error("Cannot start frontend without Node.js")
-        print("\n💡 Install Node.js from: https://nodejs.org/")
-        print("   Then restart your terminal and run: python run.py all")
-        print("\n📌 Backend is still available at: http://localhost:8000")
-        print("   API Docs: http://localhost:8000/docs")
-        return False
-    
-    print_header("Starting Frontend Server")
-    print_step("Starting Vite dev server on http://localhost:5173")
-    print("Press Ctrl+C to stop\n")
-    
-    npm_cmd = "npm.cmd" if os.name == 'nt' else "npm"
-    subprocess.run([npm_cmd, "run", "dev"], cwd=FRONTEND_DIR, shell=True if os.name == 'nt' else False)
-    return True
-
-
-def run_all():
-    """Run both backend and frontend in separate processes."""
-    import threading
-    
-    print_header("Starting Full Application")
-    print("Backend: http://localhost:8000")
-    print("Frontend: http://localhost:5173")
-    print("API Docs: http://localhost:8000/docs")
-    print("\nPress Ctrl+C to stop both servers\n")
-    
-    # Start backend in a thread
-    backend_thread = threading.Thread(target=run_backend, daemon=True)
-    backend_thread.start()
-    
-    # Give backend time to start
-    import time
-    time.sleep(2)
-    
-    # Check if Node.js is available
-    if not check_node():
-        print_error("Node.js not found - Frontend will not start")
-        print("\n💡 Install Node.js from: https://nodejs.org/")
-        print("   Then restart your terminal and run: python run.py all")
-        print("\n📌 Backend is running at: http://localhost:8000")
-        print("   API Docs: http://localhost:8000/docs")
-        print("\nPress Ctrl+C to stop the backend...\n")
+def wait_for_service(url: str, name: str, timeout: int = 60):
+    """Wait for a service to become available."""
+    import urllib.request
+    print(f"  Waiting for {name}...", end="", flush=True)
+    start = time.time()
+    while time.time() - start < timeout:
         try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nShutting down...")
-        return
-    
-    # Run frontend in main thread (so Ctrl+C works)
-    try:
-        run_frontend()
-    except KeyboardInterrupt:
-        print("\nShutting down...")
+            urllib.request.urlopen(url, timeout=2)
+            print(" ✓")
+            return True
+        except:
+            print(".", end="", flush=True)
+            time.sleep(2)
+    print(" timeout!")
+    return False
 
 
-def check_status():
-    """Check if all dependencies are ready."""
-    print_header("System Check")
+def install_deps():
+    """Install dependencies if needed."""
+    # Backend
+    if not (BACKEND_DIR / "app").exists():
+        print("ERROR: backend/app folder not found")
+        sys.exit(1)
     
-    all_good = True
+    print("  Installing backend dependencies...")
+    run_cmd("pip install -r requirements.txt -q", cwd=BACKEND_DIR)
     
-    # Check Python
-    if not check_python():
-        all_good = False
+    # Frontend
+    if not (FRONTEND_DIR / "node_modules").exists():
+        print("  Installing frontend dependencies...")
+        run_cmd("npm install", cwd=FRONTEND_DIR)
+
+
+def start_keycloak():
+    """Start Keycloak via Docker Compose."""
+    print_box("Starting Keycloak (Docker)")
     
-    # Check Node.js
-    if not check_node():
-        all_good = False
+    if not check_docker():
+        print("  ERROR: Docker is not running!")
+        print("  Please start Docker Desktop and try again.")
+        print("  Or use: python run.py --local")
+        sys.exit(1)
     
-    # Check npm
-    if not check_npm():
-        all_good = False
+    run_cmd("docker-compose up -d", cwd=KEYCLOAK_DIR)
     
-    # Check backend dependencies
-    print_step("Checking backend dependencies...")
-    try:
-        import fastapi
-        import uvicorn
-        import sqlalchemy
-        print_success("Backend dependencies installed")
-    except ImportError as e:
-        print_error(f"Missing backend dependency: {e.name}")
-        all_good = False
+    # Wait for Keycloak to be ready
+    wait_for_service("http://localhost:8080/health/ready", "Keycloak", timeout=90)
+
+
+def start_backend(auth_mode: str = "keycloak"):
+    """Start the FastAPI backend."""
+    print_box(f"Starting Backend (AUTH_MODE={auth_mode})")
     
-    # Check frontend node_modules
-    print_step("Checking frontend dependencies...")
-    if (FRONTEND_DIR / "node_modules").exists():
-        print_success("Frontend dependencies installed")
+    env = {"AUTH_MODE": auth_mode}
+    run_cmd("python -m uvicorn app.main:app --reload --port 8000", 
+            cwd=BACKEND_DIR, background=True, env=env)
+    
+    time.sleep(2)
+    wait_for_service("http://localhost:8000/health", "Backend")
+
+
+def start_frontend():
+    """Start the Vite frontend."""
+    print_box("Starting Frontend")
+    
+    run_cmd("npm run dev", cwd=FRONTEND_DIR, background=True)
+    
+    time.sleep(2)
+    wait_for_service("http://localhost:5173", "Frontend")
+
+
+def stop_all():
+    """Stop all services."""
+    print_box("Stopping All Services")
+    
+    # Stop Keycloak
+    print("  Stopping Keycloak...")
+    run_cmd("docker-compose down", cwd=KEYCLOAK_DIR)
+    
+    # Kill processes on ports
+    if os.name == 'nt':
+        # Windows
+        for port in [8000, 5173]:
+            subprocess.run(
+                f'for /f "tokens=5" %a in (\'netstat -aon ^| findstr :{port}\') do taskkill /F /PID %a',
+                shell=True, capture_output=True
+            )
     else:
-        print_error("Frontend dependencies not installed (run: python run.py setup)")
-        all_good = False
+        # Unix
+        for port in [8000, 5173]:
+            subprocess.run(f"lsof -ti:{port} | xargs kill -9", shell=True, capture_output=True)
     
-    # Summary
-    print()
-    if all_good:
-        print_success("All checks passed! Run 'python run.py all' to start.")
-    else:
-        print_error("Some checks failed. Run 'python run.py setup' first.")
-    
-    return all_good
-
-
-def print_usage():
-    """Print usage information."""
-    print(__doc__)
+    print("  ✓ All services stopped")
 
 
 def main():
-    """Main entry point."""
-    if len(sys.argv) < 2:
-        command = "all"
-    else:
-        command = sys.argv[1].lower()
+    args = sys.argv[1:]
     
-    if command == "setup":
-        if not check_python():
-            sys.exit(1)
-        if not check_node():
-            sys.exit(1)
-        if not check_npm():
-            sys.exit(1)
-        
-        if setup_backend() and setup_frontend():
-            print_header("Setup Complete!")
-            print("Run 'python run.py all' to start the application.")
-            print("\nEndpoints:")
-            print("  • Frontend: http://localhost:5173")
-            print("  • Backend:  http://localhost:8000")
-            print("  • API Docs: http://localhost:8000/docs")
-        else:
-            sys.exit(1)
+    # Handle stop command
+    if "--stop" in args or "stop" in args:
+        stop_all()
+        return
     
-    elif command == "backend":
-        run_backend()
+    # Determine auth mode
+    local_mode = "--local" in args or "local" in args
+    auth_mode = "local" if local_mode else "keycloak"
     
-    elif command == "frontend":
-        run_frontend()
+    print_box("Auth Module v2")
+    print(f"  Mode: {auth_mode.upper()}")
     
-    elif command == "all":
-        run_all()
+    # Install dependencies
+    install_deps()
     
-    elif command == "check":
-        if not check_status():
-            sys.exit(1)
+    # Start services
+    if not local_mode:
+        start_keycloak()
     
-    elif command in ["help", "-h", "--help"]:
-        print_usage()
+    start_backend(auth_mode)
+    start_frontend()
     
-    else:
-        print_error(f"Unknown command: {command}")
-        print_usage()
-        sys.exit(1)
+    # Print summary
+    print_box("All Services Running!")
+    print()
+    print("  Frontend:  http://localhost:5173")
+    print("  Backend:   http://localhost:8000")
+    print("  API Docs:  http://localhost:8000/docs")
+    if not local_mode:
+        print("  Keycloak:  http://localhost:8080/admin (admin/admin)")
+    print()
+    print("  Test Users (Keycloak mode):")
+    print("    testuser@example.com / TestPass123!")
+    print("    admin@example.com / AdminPass123!")
+    print()
+    print("  Press Ctrl+C to stop all services")
+    print()
+    
+    # Keep running until Ctrl+C
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n  Shutting down...")
+        stop_all()
 
 
 if __name__ == "__main__":
